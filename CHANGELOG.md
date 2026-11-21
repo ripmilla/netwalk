@@ -39,10 +39,15 @@ I last upgraded" without reading thirty commits.
     dump is read as command output.
   - A dump copied into the directory by hand, with no `### /export` above it, is recognised by
     its shape and read the same way.
+- **The audit counted an address once per sweep.** A host normally appears in two sweeps —
+  the host sweep that decided it was alive, and the port scan that looked at it properly —
+  so every unidentified address was counted twice. A real survey told the site owner that
+  842 addresses could not be identified when there were 478. Addresses are counted once now,
+  and a test says so.
 
 ### Tests
 
-Audit 74, up from 57. The dump is tested in both directions: a vulnerable dump raises every
+Audit 76, up from 57. The dump is tested in both directions: a vulnerable dump raises every
 check it should, a hardened dump raises none, a check the dump cannot decide is named as
 `NOT CHECKED` rather than passed, and command output still wins over a dump in the same file.
 The dump's CRLF line endings and its wrapped settings are tested too.

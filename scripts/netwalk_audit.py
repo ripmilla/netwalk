@@ -600,9 +600,17 @@ def rc_risky_open_ports(rec: dict) -> list[dict]:
 
 
 def rc_unidentified_hosts(rec: dict) -> list[dict]:
-    unknown = []
+    """Addresses that answered a sweep and that nobody has named yet.
+
+    A host normally appears in more than one sweep - the host sweep that decided it
+    was alive, and the port scan that looked at it properly - so the addresses are
+    counted once. Counting them per sweep told the site owner that 842 addresses
+    could not be identified when there were 478, and a report that overstates its
+    own gaps is not a report anybody can act on.
+    """
+    unknown = set()
     for s in rec.get("sweeps") or []:
-        unknown += [h["ip"] for h in (s.get("hosts") or []) if not h.get("in_record")]
+        unknown.update(h["ip"] for h in (s.get("hosts") or []) if not h.get("in_record"))
     if not unknown:
         return []
     return [_finding(
@@ -611,7 +619,7 @@ def rc_unidentified_hosts(rec: dict) -> list[dict]:
         "These answered a sweep of an authorised range but are not in the device inventory "
         "and the site owner has not named them. An unidentified device is not necessarily a "
         "problem, but nobody being able to say what it is, is.",
-        [{"source": "sweeps[].hosts", "excerpt": ", ".join(sorted(set(unknown))[:12])}],
+        [{"source": "sweeps[].hosts", "excerpt": ", ".join(sorted(unknown)[:12])}],
         "Trace each address to a physical port and a person. Until that is done they are on "
         "the network with nobody accountable for them.",
         "confirmed", public_safe=False,

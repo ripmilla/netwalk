@@ -526,6 +526,12 @@ def test_one_finding_per_host_across_sweeps():
         check(risky[0]["id"].endswith("10.0.0.7"), "the id names the address it is about")
         check("10.0.0.0/24" in detail and "10.0.0.7" in detail,
               "the evidence names both ranges that found it")
+    unid = [f for f in findings if f["id"] == "rec-unidentified-host"]
+    check(len(unid) == 1, "one unidentified-host finding, not one per sweep", str(len(unid)))
+    if unid:
+        check("1 address" in unid[0]["title"],
+              "an address seen in two sweeps is counted once, not twice",
+              unid[0]["title"])
 
 
 def test_not_checked_is_reported():
