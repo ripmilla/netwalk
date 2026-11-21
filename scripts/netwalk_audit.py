@@ -74,6 +74,7 @@ CHECKS: list[dict] = [
                "address= to the management network.",
         "kind": "config_present", "cmd": "/ip service print",
         "pattern": r'(?m)^\s*\d+\s+(?!X[\s])(?:name=")?telnet\b',
+        "export_pattern": '(?m)^set telnet\\b(?![^\\n]*\\bdisabled=yes)',
     },
     {
         "id": "mt-ftp-enabled", "vendors": ["mikrotik"], "severity": "medium",
@@ -83,6 +84,7 @@ CHECKS: list[dict] = [
         "fix": "/ip service disable ftp",
         "kind": "config_present", "cmd": "/ip service print",
         "pattern": r'(?m)^\s*\d+\s+(?!X[\s])(?:name=")?ftp\b',
+        "export_pattern": '(?m)^set ftp\\b(?![^\\n]*\\bdisabled=yes)',
     },
     {
         "id": "mt-www-plain", "vendors": ["mikrotik"], "severity": "medium",
@@ -92,6 +94,7 @@ CHECKS: list[dict] = [
         "fix": "/ip service disable www and use www-ssl, restricted with address=.",
         "kind": "config_present", "cmd": "/ip service print",
         "pattern": r'(?m)^\s*\d+\s+(?!X[\s])(?:name=")?www\b(?!-ssl)',
+        "export_pattern": '(?m)^set www\\b(?!-ssl)(?![^\\n]*\\bdisabled=yes)',
     },
     {
         "id": "mt-api-plain", "vendors": ["mikrotik"], "severity": "medium",
@@ -101,6 +104,7 @@ CHECKS: list[dict] = [
         "fix": "/ip service disable api, and use api-ssl if an integration needs it.",
         "kind": "config_present", "cmd": "/ip service print",
         "pattern": r'(?m)^\s*\d+\s+(?!X[\s])(?:name=")?api\b(?!-ssl)',
+        "export_pattern": '(?m)^set api\\b(?!-ssl)(?![^\\n]*\\bdisabled=yes)',
     },
     {
         "id": "mt-input-no-drop", "vendors": ["mikrotik"], "severity": "critical",
@@ -116,6 +120,7 @@ CHECKS: list[dict] = [
                "session you cannot lock yourself out of.",
         "kind": "config_absent", "cmd": "/ip firewall filter print",
         "pattern": r"chain=input[^\n]*action=(drop|reject)",
+        "export_pattern": '(?m)(chain=input[^\\n]*action=(drop|reject)|action=(drop|reject)[^\\n]*chain=input)',
     },
     {
         "id": "mt-snmp-v1v2", "vendors": ["mikrotik"], "severity": "high",
@@ -127,6 +132,7 @@ CHECKS: list[dict] = [
                "host's address and treat the string as a password.",
         "kind": "config_present", "cmd": "/snmp community print",
         "pattern": r"(?im)^\s*\d+\s+\S*\s*(public|private)\b|authentication-protocol=\s*$",
+        "export_pattern": '\\bname=(public|private)\\b',
     },
     {
         "id": "mt-romon-enabled", "vendors": ["mikrotik"], "severity": "medium",
@@ -138,6 +144,7 @@ CHECKS: list[dict] = [
                "is needed, set a RoMON secret and restrict the ports it runs on.",
         "kind": "config_present", "cmd": "/tool romon print",
         "pattern": r"(?im)^\s*enabled:\s*yes",
+        "export_pattern": '\\benabled=yes\\b',
     },
     {
         "id": "mt-mac-server-all", "vendors": ["mikrotik"], "severity": "medium",
@@ -149,6 +156,7 @@ CHECKS: list[dict] = [
                "allowed-interface-list=MGMT, same for mac-winbox.",
         "kind": "config_present", "cmd": "/tool mac-server print",
         "pattern": r"(?im)allowed-interface-list:\s*(all|\*all)",
+        "export_pattern": 'allowed-interface-list=(all|\\*all)',
     },
     {
         "id": "mt-discovery-all", "vendors": ["mikrotik"], "severity": "low",
@@ -158,6 +166,7 @@ CHECKS: list[dict] = [
         "fix": "/ip neighbor discovery-settings set discover-interface-list=LAN",
         "kind": "config_present", "cmd": "/ip neighbor discovery-settings print",
         "pattern": r"(?im)discover-interface-list:\s*(all|\*all)",
+        "export_pattern": 'discover-interface-list=(all|\\*all)',
     },
     {
         "id": "mt-bandwidth-server", "vendors": ["mikrotik"], "severity": "low",
@@ -167,6 +176,7 @@ CHECKS: list[dict] = [
         "fix": "/tool bandwidth-server set enabled=no",
         "kind": "config_present", "cmd": "/tool bandwidth-server print",
         "pattern": r"(?im)^\s*enabled:\s*yes",
+        "export_pattern": '\\benabled=yes\\b',
     },
     {
         "id": "mt-socks-upnp", "vendors": ["mikrotik"], "severity": "medium",
@@ -178,6 +188,7 @@ CHECKS: list[dict] = [
                "genuinely needs them, in which case restrict them.",
         "kind": "config_present", "cmd": "/ip socks print",
         "pattern": r"(?im)^\s*enabled:\s*yes",
+        "export_pattern": '\\benabled=yes\\b',
     },
     {
         "id": "mt-dns-remote", "vendors": ["mikrotik"], "severity": "high",
@@ -195,6 +206,7 @@ CHECKS: list[dict] = [
                "make sure the input chain drops UDP/TCP 53 from the WAN.",
         "kind": "config_present", "cmd": "/ip dns print",
         "pattern": r"(?im)allow-remote-requests:\s*yes",
+        "export_pattern": 'allow-remote-requests=yes',
     },
     {
         "id": "mt-no-ntp", "vendors": ["mikrotik"], "severity": "low", "category": "config-hygiene",
@@ -204,6 +216,7 @@ CHECKS: list[dict] = [
         "fix": "/system ntp client set enabled=yes servers=<two reachable servers>",
         "kind": "config_absent", "cmd": "/system ntp client print",
         "pattern": r"(?im)^\s*enabled:\s*yes",
+        "export_pattern": '\\benabled=yes\\b',
     },
     {
         "id": "mt-no-remote-logging", "vendors": ["mikrotik"], "severity": "medium",
@@ -215,6 +228,7 @@ CHECKS: list[dict] = [
                "then point the topics that matter at it.",
         "kind": "config_absent", "cmd": "/system logging action print",
         "pattern": r"(?im)\bremote\b",
+        "export_pattern": '\\bremote\\b',
     },
     {
         "id": "mt-default-admin", "vendors": ["mikrotik"], "severity": "high",
@@ -612,6 +626,15 @@ RECORD_CHECKS = [rc_mgmt_on_wan, rc_weak_wifi, rc_risky_open_ports, rc_unidentif
 # ---------------------------------------------------------------------------
 
 BLOCK_RE = re.compile(r"^### (.+)$", re.MULTILINE)
+# The command that produces a RouterOS configuration dump rather than command output.
+EXPORT_MARK_RE = re.compile(r"^/export(\s|$)")
+# `/ip service print` prints the `/ip service` section of a dump.
+CMD_SECTION_RE = re.compile(r"^(.*?)\s+print(?:\s+detail)?$")
+# A dump that nobody marked still has to be recognisable. Its sections are paths
+# at the left margin and the settings under them are `set`/`add` lines. Both
+# have to be there: one on its own is too weak to call a file a dump.
+DUMP_SECTION_RE = re.compile(r"^/\S", re.MULTILINE)
+DUMP_ENTRY_RE = re.compile(r"^(set|add)\s+\S", re.MULTILINE)
 
 
 def now_iso() -> str:
@@ -635,17 +658,91 @@ def split_blocks(text: str) -> dict[str, str] | None:
     return out
 
 
-def scope(text: str, cmd: str | None) -> str | None:
-    """The slice of `text` a check should look at. None = the evidence is not present."""
+def scope(text: str, cmd: str | None) -> tuple[str | None, bool]:
+    """The slice of `text` a check should look at, and whether it came from a dump.
+
+    None for the text means the evidence is not present. The flag says where the
+    text came from: a check written against the output of a command has a
+    different pattern for the same setting in a configuration dump.
+    """
     if not cmd:
-        return text
+        return text, False
     blocks = split_blocks(text)
-    if blocks is None:
-        return text        # an unmarked dump (a bare /export) genuinely contains everything
-    for name, body in blocks.items():
-        if name.startswith(cmd) or cmd in name:
-            return body
+    if blocks is not None:
+        for name, body in blocks.items():
+            if name.startswith(cmd) or cmd in name:
+                return body, False
+    sec = export_section(text, cmd)
+    if sec is not None:
+        return sec, True
+    if blocks is None and not export_body(text):
+        return text, False        # not a dump: the whole file is what the command printed
+    return None, False
+
+
+def looks_like_dump(text: str) -> bool:
+    """True if the text is a RouterOS configuration dump with no marker above it."""
+    return bool(DUMP_SECTION_RE.search(text) and DUMP_ENTRY_RE.search(text))
+
+
+def export_body(text: str) -> str | None:
+    """The configuration dump in `text`, if there is one.
+
+    `netwalk_exec.py run --out` records the command that produced a file above its
+    contents. A file whose command was `/export verbose` holds a RouterOS
+    configuration dump rather than the output of one command, and it is organised
+    by subsystem - not by command. A dump copied into the directory by hand has no
+    marker above it, and is recognised by its shape instead.
+    """
+    blocks = split_blocks(text)
+    if blocks is not None:
+        for name, body in blocks.items():
+            if EXPORT_MARK_RE.match(name):
+                return body
+        return None
+    if looks_like_dump(text):
+        return text
     return None
+
+
+def export_sections(text: str) -> dict[str, str]:
+    """The sections of a configuration dump, keyed by the path they belong to.
+
+    A dump lists `/ip service`, then the settings under it, then `/user`, then the
+    settings under that. A check scoped to a command needs the section that
+    command prints: a setting that belongs to another subsystem is not evidence
+    about this one - `!remote-address` in a queue rule says nothing about
+    whether a remote log target is configured.
+    """
+    body = export_body(text)
+    if body is None:
+        return {}
+    sections: dict[str, list[str]] = {}
+    current = None
+    # RouterOS wraps a long setting across lines with a trailing backslash. The
+    # settings of one entry live on one logical line, and a pattern that looks for
+    # `disabled=yes` has to see it next to the entry it belongs to. RouterOS
+    # terminates its lines with CRLF, so the fold has to allow for the \r.
+    for raw in re.sub(r"\\[ \t]*\r?\n[ \t]*", " ", body).splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("/"):
+            current = line
+            sections.setdefault(current, [])
+        elif current is not None:
+            sections[current].append(line)
+    return {path: "\n".join(lines) for path, lines in sections.items()}
+
+
+def export_section(text: str, cmd: str | None) -> str | None:
+    """The part of a configuration dump that `cmd` would have printed."""
+    if not cmd:
+        return None
+    m = CMD_SECTION_RE.match(cmd)
+    if not m:
+        return None
+    return export_sections(text).get(m.group(1))
 
 
 def config_text(site: str, dev: dict) -> tuple[str, list[str]]:
@@ -718,18 +815,29 @@ def run_checks(site: str, rec: dict) -> tuple[list[dict], list[str]]:
                                    f"{vendor or 'vendor'} check(s) could not run")
             continue
         for c in applicable:
-            body = scope(text, c.get("cmd"))
+            body, from_dump = scope(text, c.get("cmd"))
             if body is None:
-                not_checked.append(f"{host}: {c['id']} needs the output of "
-                                   f"`{c['cmd']}`, which is not in {', '.join(files)}")
+                if export_body(text):
+                    not_checked.append(f"{host}: {c['id']} needs the output of "
+                                       f"`{c['cmd']}`, which is not in the configuration "
+                                       f"dump in {', '.join(files)}")
+                else:
+                    not_checked.append(f"{host}: {c['id']} needs the output of "
+                                       f"`{c['cmd']}`, which is not in {', '.join(files)}")
                 continue
-            hit = re.search(c["pattern"], body)
+            pattern = c.get("export_pattern") if from_dump else c["pattern"]
+            if not pattern:
+                not_checked.append(f"{host}: {c['id']} cannot be decided from a "
+                                   f"configuration dump - it reads the output of "
+                                   f"`{c['cmd']}`, and a dump is not that shape")
+                continue
+            hit = re.search(pattern, body)
             bad = bool(hit) if c["kind"] == "config_present" else not hit
             if not bad:
                 continue
             ev = [{"source": c.get("cmd") or (files[0] if files else "config export"),
-                   "excerpt": excerpt_for(body, c["pattern"]) if c["kind"] == "config_present"
-                   else f"no line matching /{c['pattern']}/ in this output"}]
+                   "excerpt": excerpt_for(body, pattern) if c["kind"] == "config_present"
+                   else f"no line matching /{pattern}/ in this output"}]
             findings.append(_finding(
                 f"{c['id']}@{host}", c["severity"], c.get("category", "security"), host,
                 c["title"], c["why"], ev, c["fix"],
