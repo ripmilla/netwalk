@@ -152,6 +152,81 @@ Flags: X - disabled, I - invalid
  0   name="noc-somchai" group=full
 '''
 
+# A RouterOS configuration dump, the way `netwalk_exec.py run --out` saves the
+# output of `/export verbose`. The settings are the same ones the command
+# fixtures above carry, in the shape a dump writes them: `set <name> key=value`.
+# The `### /export verbose` line is netwalk_exec's own marker, naming the
+# command whose output follows - the dump itself does not contain a `###` line.
+MT_DUMP_VULNERABLE = '''### /export verbose
+# 2026-01-14 09:05:00 by RouterOS 7.15.3
+# model = RB5009UG+S
+/ip service
+set ftp address="" disabled=no max-sessions=20 port=21 vrf=main
+set ssh address=10.0.0.0/8 disabled=no max-sessions=20 port=22 vrf=main
+set telnet address=10.0.0.0/8 disabled=no max-sessions=20 port=23 vrf=main
+set www address="" disabled=no max-sessions=20 port=88 vrf=main
+set api address="" disabled=no max-sessions=20 port=8728 vrf=main
+/ip firewall filter
+add action=accept chain=input connection-state=established,related
+/snmp community
+set [ find default=yes ] addresses=0.0.0.0/0 authentication-protocol=MD5 \\
+    disabled=no encryption-protocol=DES name=public read-access=yes security=none
+/tool romon
+set enabled=yes id=00:00:00:00:00:00
+/tool mac-server
+set allowed-interface-list=all
+/ip neighbor discovery-settings
+set discover-interface-list=all discover-interval=30s
+/tool bandwidth-server
+set allocate-udp-ports-from=2000 authenticate=yes enabled=yes max-sessions=100
+/ip socks
+set auth-method=none enabled=yes port=1080 version=4 vrf=main
+/ip dns
+set allow-remote-requests=yes cache-size=2048KiB servers=1.1.1.1
+/system ntp client
+set enabled=no mode=unicast servers=pool.ntp.org
+/system logging action
+set 0 memory-lines=1000 name=memory target=memory
+/queue simple
+set name=voip !parent-queue !queue-type !rate-limit !remote-address target=ether8
+'''
+
+MT_DUMP_HARDENED = '''### /export verbose
+# 2026-01-14 09:05:00 by RouterOS 7.15.3
+/ip service
+set ftp address="" disabled=yes max-sessions=20 port=21 vrf=main
+set telnet address=10.0.0.0/8 disabled=yes max-sessions=20 port=23 vrf=main
+set www address="" disabled=yes max-sessions=20 port=88 vrf=main
+set www-ssl address="" certificate=none disabled=no max-sessions=20 port=443 \\
+    tls-version=any vrf=main
+set api address="" disabled=yes max-sessions=20 port=8728 vrf=main
+set api-ssl address="" certificate=cert01 disabled=no max-sessions=20 port=8729 \\
+    tls-version=any vrf=main
+set ssh address=10.0.0.0/8 disabled=no max-sessions=20 port=22 vrf=main
+/ip firewall filter
+add action=accept chain=input connection-state=established,related
+add action=drop chain=input
+/snmp community
+set [ find default=yes ] addresses=10.0.0.9/32 authentication-protocol=SHA1 \\
+    encryption-protocol=AES name=mon-v3-only read-access=yes security=private
+/tool romon
+set enabled=no id=00:00:00:00:00:00
+/tool mac-server
+set allowed-interface-list=MGMT
+/ip neighbor discovery-settings
+set discover-interface-list=LAN discover-interval=30s
+/tool bandwidth-server
+set allocate-udp-ports-from=2000 authenticate=yes enabled=no max-sessions=100
+/ip socks
+set auth-method=none enabled=no port=1080 version=4 vrf=main
+/ip dns
+set allow-remote-requests=no cache-size=2048KiB servers=1.1.1.1
+/system ntp client
+set enabled=yes mode=unicast servers=pool.ntp.org
+/system logging action
+set 0 name=remote remote=10.0.0.9 remote-port=514 target=remote
+'''
+
 IOS_VULNERABLE = '''### show running-config
 version 15.2
 enable password cisco123
@@ -251,6 +326,102 @@ def test_disabled_is_not_enabled():
     got, _, _ = audit("mt-ssl", "gw", "mikrotik", ssl)
     check("mt-www-plain" not in got, "www-ssl is not mistaken for plain www")
     check("mt-api-plain" not in got, "api-ssl is not mistaken for the clear-text api")
+
+
+def test_mikrotik_dump():
+    print("\nMikroTik - the same box, as a configuration dump instead of command output")
+    want = {"mt-telnet-enabled", "mt-ftp-enabled", "mt-www-plain", "mt-api-plain",
+            "mt-input-no-drop", "mt-snmp-v1v2", "mt-romon-enabled", "mt-mac-server-all",
+            "mt-discovery-all", "mt-bandwidth-server", "mt-socks-upnp", "mt-dns-remote",
+            "mt-no-ntp", "mt-no-remote-logging"}
+    got, findings, nc = audit("mt-dump", "gw", "mikrotik", MT_DUMP_VULNERABLE)
+    missing = want - got
+    check(not missing, "every MikroTik check fires on a configuration dump",
+          f"missed: {sorted(missing)}")
+    check("mt-default-admin" not in got,
+          "a check the dump cannot decide is not silently reported as clean")
+
+    print("\nMikroTik - a dump is read by subsystem, not as one blob")
+    check("mt-no-remote-logging" in got,
+          "a `!remote-address` in a queue rule does not decide the logging check",
+          f"got: {sorted(got)}")
+    check(any("mt-default-admin" in n for n in nc),
+          "a check whose section the dump does not carry is named as NOT CHECKED")
+    check(not any("mt-default-admin" in f["id"] for f in findings),
+          "and it produces no finding either way")
+
+    print("\nMikroTik - the hardened dump must be silent")
+    got, _, _ = audit("mt-dump-hardened", "gw", "mikrotik", MT_DUMP_HARDENED)
+    check(not got, "a properly configured RouterOS dump produces no findings",
+          f"got: {sorted(got)}")
+
+
+def test_dump_cannot_decide_is_not_clean():
+    print("\nhonesty - a check the dump cannot decide says so")
+    dump = ('### /export verbose\n'
+            '/user\n'
+            'add group=full name=admin password=whatever\n')
+    got, _, nc = audit("mt-dump-user", "gw", "mikrotik", dump)
+    check("mt-default-admin" not in got,
+          "a check with no dump-side pattern does not produce a finding")
+    check(any("mt-default-admin" in n for n in nc),
+          "and it is reported as NOT CHECKED rather than passed")
+    check(any("cannot be decided" in n for n in nc),
+          "and the reason says the dump is not the shape the check reads",
+          f"got: {nc}")
+
+
+def test_command_output_wins_over_a_dump():
+    print("\nprecedence - command output is used when the file carries both")
+    both = ('### /ip service print detail\n'
+            ' 0   name="telnet" port=23\n'
+            '### /export verbose\n'
+            '/ip service\n'
+            'set telnet address="" disabled=yes max-sessions=20 port=23 vrf=main\n')
+    got, _, _ = audit("mt-both", "gw", "mikrotik", both)
+    check("mt-telnet-enabled" in got,
+          "the command output decides the check when the file has one",
+          f"got: {sorted(got)}")
+
+
+def test_unmarked_dump_is_still_a_dump():
+    print("\nMikroTik - a dump copied in by hand, with nothing above it")
+    bare = MT_DUMP_VULNERABLE.split("\n", 1)[1]      # drop the `### /export verbose` marker
+    got, _, _ = audit("mt-dump-bare", "gw", "mikrotik", bare)
+    check("mt-telnet-enabled" in got,
+          "a dump with no marker is still read, not silently reported as clean",
+          f"got: {sorted(got)}")
+    check("mt-no-remote-logging" in got,
+          "and it is read by subsystem, not as one blob",
+          f"got: {sorted(got)}")
+
+    print("\nMikroTik - and a hardened dump is still silent")
+    bare_ok = MT_DUMP_HARDENED.split("\n", 1)[1]
+    got, _, _ = audit("mt-dump-bare-hardened", "gw", "mikrotik", bare_ok)
+    check(not got, "a hardened dump with no marker produces no findings",
+          f"got: {sorted(got)}")
+
+    print("\nCisco - a config that is not a dump is not read as one")
+    got, _, _ = audit("cisco-bare", "gw", "cisco", IOS_VULNERABLE.split("\n", 1)[1])
+    check("cis-enable-password" in got,
+          "an unmarked Cisco config still produces its findings",
+          f"got: {sorted(got)}")
+
+
+def test_dump_line_endings():
+    print("\nMikroTik - RouterOS ends its lines with CRLF")
+    crlf = MT_DUMP_VULNERABLE.replace("\n", "\r\n")
+    sections = A.export_sections(crlf)
+    check("/ip service" in sections, "a CRLF dump is split into its sections",
+          f"got: {sorted(sections)}")
+    service = sections.get("/ip service", "")
+    check("disabled=no" in service,
+          "a setting is read out of a CRLF section",
+          f"got: {service[:160]}")
+    snmp = sections.get("/snmp community", "")
+    check("name=public" in snmp and "\\" not in snmp,
+          "a setting wrapped over two lines is folded back into one",
+          f"got: {snmp[:200]}")
 
 
 def test_cisco():
@@ -355,6 +526,12 @@ def test_one_finding_per_host_across_sweeps():
         check(risky[0]["id"].endswith("10.0.0.7"), "the id names the address it is about")
         check("10.0.0.0/24" in detail and "10.0.0.7" in detail,
               "the evidence names both ranges that found it")
+    unid = [f for f in findings if f["id"] == "rec-unidentified-host"]
+    check(len(unid) == 1, "one unidentified-host finding, not one per sweep", str(len(unid)))
+    if unid:
+        check("1 address" in unid[0]["title"],
+              "an address seen in two sweeps is counted once, not twice",
+              unid[0]["title"])
 
 
 def test_not_checked_is_reported():
@@ -450,6 +627,11 @@ def test_run_writes_once():
 def main() -> int:
     print("netwalk hardening catalogue - regression suite")
     test_mikrotik_both_formats()
+    test_mikrotik_dump()
+    test_dump_cannot_decide_is_not_clean()
+    test_command_output_wins_over_a_dump()
+    test_unmarked_dump_is_still_a_dump()
+    test_dump_line_endings()
     test_disabled_is_not_enabled()
     test_cisco()
     test_linux()

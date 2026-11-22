@@ -19,6 +19,39 @@ I last upgraded" without reading thirty commits.
   rather than a summary — technical terms stay in English, which is how the people who will
   actually run this read and write about networks.
 
+### Fixed
+
+- **The audit read a MikroTik configuration dump as if it were command output.** Each check was
+  given the slice of the file named after the command it runs — `/ip service print` — and a file
+  holding the output of `/export` is not named that way: it is a dump of the whole configuration,
+  organised by subsystem. No block matched, every MikroTik check came back as "not present", and
+  a router with telnet enabled and SNMP v1/v2c open was reported clean. A check now finds the
+  section of the dump its command prints, and carries a second pattern for the syntax a dump
+  uses — `set telnet disabled=no`, not a `print` table.
+  - **A dump is read by subsystem, not as one blob.** Scoping a check to the whole dump is worse
+    than not reading it: `!remote-address` in a queue rule matches the logging check's pattern
+    and turns "logs go nowhere" into a finding that is not true. A setting that belongs to
+    another subsystem is not evidence about this one.
+  - **A check the dump cannot decide is named, not passed.** RouterOS 7 does not export user
+    accounts, so the default-admin check cannot be decided from a dump. It is reported as
+    `NOT CHECKED`, with the reason, and produces no finding in either direction.
+  - Command output still wins: a file carrying both the output of `/ip service print` and a
+    dump is read as command output.
+  - A dump copied into the directory by hand, with no `### /export` above it, is recognised by
+    its shape and read the same way.
+- **The audit counted an address once per sweep.** A host normally appears in two sweeps —
+  the host sweep that decided it was alive, and the port scan that looked at it properly —
+  so every unidentified address was counted twice. A real survey told the site owner that
+  842 addresses could not be identified when there were 478. Addresses are counted once now,
+  and a test says so.
+
+### Tests
+
+Audit 76, up from 57. The dump is tested in both directions: a vulnerable dump raises every
+check it should, a hardened dump raises none, a check the dump cannot decide is named as
+`NOT CHECKED` rather than passed, and command output still wins over a dump in the same file.
+The dump's CRLF line endings and its wrapped settings are tested too.
+
 ---
 
 ## [0.2.0] — 2026-08-23
